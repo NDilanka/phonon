@@ -955,22 +955,25 @@ fn plausibly_same_word(left: &str, right: &str) -> bool {
 }
 
 /// Webster's Second word list shipped with the app (`assets/english_words.txt`).
-/// Loaded once; an install missing the file falls back to no phonetic guessing,
-/// which is the safe direction — a missed term repair beats a corrupted word.
+/// Windows embeds it at build time so the guard works without a source checkout.
+/// Other platforms load it once from the app's resources; a missing file disables
+/// phonetic guessing rather than risking a corrupted ordinary word.
 fn english_words() -> &'static std::collections::HashSet<String> {
     static WORDS: std::sync::OnceLock<std::collections::HashSet<String>> =
         std::sync::OnceLock::new();
     WORDS.get_or_init(|| {
-        let path = crate::paths::project_root().join("assets/english_words.txt");
-        fs::read_to_string(path)
-            .map(|text| {
-                text.lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
+        #[cfg(windows)]
+        let text = include_str!("../../../assets/english_words.txt");
+        #[cfg(not(windows))]
+        let text = {
+            let path = crate::paths::project_root().join("assets/english_words.txt");
+            fs::read_to_string(path).unwrap_or_default()
+        };
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
     })
 }
 
@@ -1291,6 +1294,17 @@ mod tests {
         let result = dictionary.apply_exact_replacements("BLACK WELL and black wellness");
         assert_eq!(result.text, "Blackwell and black wellness");
         assert_eq!(result.applied[0].count, 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_embedded_english_guard_distinguishes_words_from_nonwords() {
+        // Both directions matter: the missing-list fallback calls everything
+        // ordinary, which protects English but silently disables term repair.
+        assert!(super::english_words().contains("phone"));
+        assert!(super::is_ordinary_english("please"));
+        assert!(super::is_ordinary_english("my phone is in the car"));
+        assert!(!super::is_ordinary_english("qzvrixplonk"));
     }
 
     #[test]

@@ -24,6 +24,24 @@ pub fn agent() -> &'static ureq::Agent {
     })
 }
 
+/// The fixed-host cloud client. It has its own pool and never follows a
+/// redirect, so an API request cannot be sent to a different host while
+/// carrying the bearer credential.
+pub fn gmi_agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        let mut builder = ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(15))
+            .redirects(0)
+            .user_agent(concat!("phonon-win/", env!("CARGO_PKG_VERSION")));
+        match native_tls::TlsConnector::new() {
+            Ok(connector) => builder = builder.tls_connector(std::sync::Arc::new(connector)),
+            Err(error) => eprintln!("phonon: system TLS is unavailable: {error}"),
+        }
+        builder.build()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

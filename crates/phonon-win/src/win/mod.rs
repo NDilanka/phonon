@@ -78,7 +78,9 @@ fn forward<T: Send + 'static>(source: Receiver<T>, sink: Sender<Event>, wrap: fn
 
 /// First-run download, warmup, then the dictation loop.
 fn work(inbox: Receiver<Event>) -> Result<()> {
-    let missing: Vec<_> = manifest::ALL
+    let use_gmi = crate::polish::uses_gmi()?;
+    let components = fetch::components_for_backend(use_gmi);
+    let missing: Vec<_> = components
         .iter()
         .filter(|component| !fetch::installed(component))
         .collect();
@@ -87,22 +89,33 @@ fn work(inbox: Receiver<Event>) -> Result<()> {
         tray::notify(
             "Phonon is setting up",
             &format!(
-                "Downloading {} of speech and correction models. Phonon works offline afterwards.",
-                manifest::human_bytes(total)
+                "Downloading {} of speech assets. {}",
+                manifest::human_bytes(total),
+                if use_gmi {
+                    "Correction uses GMI Cloud over HTTPS."
+                } else {
+                    "Correction stays local and offline."
+                }
             ),
             false,
         );
     }
-    fetch::ensure_all(&mut |progress| tray::set_status(&progress.line()))
-        .context("download the speech and correction models")?;
+    fetch::ensure_components(&components, &mut |progress| {
+        tray::set_status(&progress.line())
+    })
+    .context("download the speech and correction models")?;
 
-    tray::set_status("loading the correction model");
-    let engine = Engine::start()?;
+    tray::set_status(if use_gmi {
+        "connecting to GMI correction"
+    } else {
+        "loading the correction model"
+    });
+    let mut engine = Engine::start()?;
 
     // The same readiness gate macOS applies: prove the real audio path before
     // telling the user Phonon is ready.
     tray::set_status("running the startup check");
-    match startup_check(&engine) {
+    match startup_check(&mut engine) {
         Ok(text) => eprintln!("phonon: startup check passed: {text}"),
         Err(error) => {
             tray::notify("Phonon startup check failed", &format!("{error:#}"), true);
@@ -142,7 +155,7 @@ fn work(inbox: Receiver<Event>) -> Result<()> {
                 // must also clear a latch, or the next key press would restart.
                 hook::reset_latch();
                 if recording.is_some() {
-                    finish(&engine, recording.take(), &idle);
+                    finish(&mut engine, recording.take(), &idle);
                 } else {
                     recording = begin();
                 }
@@ -153,7 +166,7 @@ fn work(inbox: Receiver<Event>) -> Result<()> {
                 }
             }
             Event::Key(Action::Stop) => {
-                finish(&engine, recording.take(), &idle);
+                finish(&mut engine, recording.take(), &idle);
             }
             Event::Key(Action::None) => {}
         }
@@ -162,7 +175,7 @@ fn work(inbox: Receiver<Event>) -> Result<()> {
 }
 
 /// Run the embedded fixture through both stages, exactly as macOS does.
-fn startup_check(engine: &Engine) -> Result<String> {
+fn startup_check(engine: &mut Engine) -> Result<String> {
     let wav = paths::data_root().join("startup.wav");
     if let Some(parent) = wav.parent() {
         std::fs::create_dir_all(parent)?;
@@ -170,6 +183,7 @@ fn startup_check(engine: &Engine) -> Result<String> {
     std::fs::write(&wav, crate::STARTUP_WAV).context("write the startup fixture")?;
     let result = engine.run(&wav)?;
     crate::assert_startup(&result)?;
+    engine.trim_after_pass(&result);
     Ok(result.polished)
 }
 
@@ -195,7 +209,7 @@ fn begin() -> Option<capture::Recording> {
     }
 }
 
-fn finish(engine: &Engine, recording: Option<capture::Recording>, idle: &str) {
+fn finish(engine: &mut Engine, recording: Option<capture::Recording>, idle: &str) {
     let Some(recording) = recording else { return };
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -208,12 +222,21 @@ fn finish(engine: &Engine, recording: Option<capture::Recording>, idle: &str) {
         .and_then(|wav| engine.run(&wav).map(|result| (wav, result)));
     match outcome {
         Ok((_, result)) => {
-            eprintln!("phonon: {}", result.summary());
+            if engine.redacts_text() {
+                eprintln!("phonon: {}", result.timing_summary());
+            } else {
+                eprintln!("phonon: {}", result.summary());
+            }
             if result.polished.trim().is_empty() {
                 tray::set_status("nothing was said");
             } else {
                 match inject::insert(&result.polished) {
-                    Ok(path) => tray::set_status(&format!("inserted ({path})")),
+                    Ok(path) => {
+                        tray::set_status(&format!("inserted ({path})"));
+                        // SendInput/paste has already queued the text. Trim on
+                        // this worker, after insertion and before another pass.
+                        engine.trim_after_pass(&result);
+                    }
                     Err(error) => {
                         tray::notify(
                             "Phonon could not insert the text",

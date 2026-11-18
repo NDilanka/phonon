@@ -174,6 +174,7 @@ pub const POLISH_MODEL: Component = Component {
 pub const ALL: &[Component] = &[SHERPA_RUNTIME, LLAMA_RUNTIME, ASR_MODEL, POLISH_MODEL];
 
 /// Total first-run download in bytes.
+#[cfg(test)]
 pub fn total_bytes() -> u64 {
     ALL.iter().map(|c| c.download_bytes()).sum()
 }

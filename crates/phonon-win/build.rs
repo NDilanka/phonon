@@ -9,7 +9,7 @@ fn main() {
             .set("ProductName", "Phonon")
             .set("FileDescription", "Phonon")
             .set("CompanyName", "Phonon")
-            .set("LegalCopyright", "MIT");
+            .set("LegalCopyright", "GPL-3.0");
         res.compile()
             .expect("phonon-win: compiling the Windows version resource");
     }

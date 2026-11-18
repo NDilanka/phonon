@@ -1,8 +1,45 @@
 # Third-party models and runtimes
 
-Phonon does not commit model weights to this repository. The public release
+Phonon does not commit model weights to this repository. The macOS public release
 downloads Parakeet and Phonon's public refiner from Hugging Face, each pinned
 by repository and revision.
+
+## Windows source-only beta
+
+This fork publishes source, not executable releases, runtime DLLs, model weights,
+recordings, or local benchmark data. First-run downloads are pinned by URL,
+revision and SHA-256 in `crates/phonon-win/src/manifest.rs`. In GMI mode only
+the speech runtime and Parakeet model are downloaded; correction uses the
+user's own GMI account. Audio stays local, but transcript chunks and dictionary
+guidance are sent to GMI. Hosted-model access remains subject to the provider's
+terms and is not a redistribution of Gemini weights.
+
+- **sherpa-onnx 1.13.6:** [source and release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.6),
+  [Apache-2.0 license](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.6/LICENSE).
+  Windows downloads the x64 shared-MD, no-TTS archive named in the manifest.
+- **ONNX Runtime:** the sherpa archive supplies its native inference DLLs;
+  the audited pinned Windows archive reports version 1.27.1.
+  [Source](https://github.com/microsoft/onnxruntime/tree/v1.27.1) and
+  [MIT license](https://github.com/microsoft/onnxruntime/blob/v1.27.1/LICENSE).
+  Preserve the archive's applicable dependency licenses and notices if distributing
+  native runtime files separately; this source-only fork does not bundle them.
+- **Parakeet TDT 0.6B v2, int8 ONNX:** NVIDIA's
+  [original model](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2),
+  exported/quantized by csukuangfj at
+  [`1ab9323565ddb038682214b292f588070a538ce2`](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/tree/1ab9323565ddb038682214b292f588070a538ce2).
+  The [pinned model card](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/blob/1ab9323565ddb038682214b292f588070a538ce2/README.md)
+  declares CC-BY-4.0; model weights keep their own license and attribution,
+  not the source code's GPL license.
+- **Optional local correction:** Windows downloads the llama.cpp CPU runtime
+  [b10726](https://github.com/ggml-org/llama.cpp/releases/tag/b10726) (MIT) and
+  Google's Gemma 4 E2B QAT q4_0 GGUF at
+  [`675cff42a74c774d6cb76f76d8eacb49b48c9b93`](https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/tree/675cff42a74c774d6cb76f76d8eacb49b48c9b93),
+  not the macOS Phonon refiner below. The exact
+  [pinned model card](https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/blob/675cff42a74c774d6cb76f76d8eacb49b48c9b93/README.md)
+  declares Apache-2.0 and links Google's
+  [Gemma 4 license](https://ai.google.dev/gemma/docs/gemma_4_license).
+  Consult those exact model terms and notices rather than inferring terms
+  for all Gemma models or applying the unrelated LFM refiner license.
 
 ## uv
 

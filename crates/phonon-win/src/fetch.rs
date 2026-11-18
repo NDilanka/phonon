@@ -274,11 +274,27 @@ pub fn ensure(component: &Component, on_progress: &mut dyn FnMut(Progress)) -> R
     Ok(final_dir)
 }
 
-/// Fetch and install everything first run needs.
-pub fn ensure_all(on_progress: &mut dyn FnMut(Progress)) -> Result<()> {
+/// Components needed by the active correction backend.
+///
+/// Cloud correction deliberately does not install the local llama runtime or
+/// Gemma weights. Besides saving disk space on first run, this keeps the cloud
+/// path from accidentally starting a resident local model.
+pub fn components_for_backend(use_gmi: bool) -> Vec<Component> {
+    if use_gmi {
+        vec![crate::manifest::SHERPA_RUNTIME, crate::manifest::ASR_MODEL]
+    } else {
+        crate::manifest::ALL.to_vec()
+    }
+}
+
+/// Fetch and install only the components selected by the caller.
+pub fn ensure_components(
+    components: &[Component],
+    on_progress: &mut dyn FnMut(Progress),
+) -> Result<()> {
     #[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
     bail!("the prebuilt Linux runtimes require x86_64");
-    for component in crate::manifest::ALL {
+    for component in components {
         ensure(component, on_progress)?;
     }
     Ok(())
@@ -287,6 +303,26 @@ pub fn ensure_all(on_progress: &mut dyn FnMut(Progress)) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloud_backend_excludes_the_resident_correction_assets() {
+        let cloud = components_for_backend(true);
+        assert_eq!(cloud.len(), 2);
+        assert_eq!(cloud[0].dir, crate::manifest::SHERPA_RUNTIME.dir);
+        assert_eq!(cloud[1].dir, crate::manifest::ASR_MODEL.dir);
+        let local = components_for_backend(false);
+        assert_eq!(local.len(), crate::manifest::ALL.len());
+        assert_eq!(
+            local
+                .iter()
+                .map(|component| component.dir)
+                .collect::<Vec<_>>(),
+            crate::manifest::ALL
+                .iter()
+                .map(|component| component.dir)
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn hashes_a_known_file() {

@@ -780,11 +780,8 @@ mod tests {
         assert_eq!(edited.source, "phonon");
         assert_eq!(edited.timestamp, "2026-10-01T01:00:00.000Z");
         assert_eq!(edited.app_category.as_deref(), Some("chat"));
-        assert!(edited
-            .audio_path
-            .as_deref()
-            .unwrap()
-            .ends_with("a-edited/audio.wav"));
+        let audio = Path::new(edited.audio_path.as_deref().unwrap());
+        assert!(audio.ends_with(Path::new("a-edited").join("audio.wav")));
         assert_eq!(edited.raw_text, "we benchmark coo blast");
         assert_eq!(edited.refined_text, "We benchmark coo blast.");
         assert_eq!(edited.edited_text, "We benchmark cuBLAS.");
